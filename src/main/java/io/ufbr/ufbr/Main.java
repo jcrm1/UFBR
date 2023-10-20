@@ -1,21 +1,28 @@
 package io.ufbr.ufbr;
 
+import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.EventQueue;
+import java.awt.GridLayout;
 import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowEvent;
 import java.awt.event.WindowListener;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
+import java.io.InputStream;
 import java.nio.charset.MalformedInputException;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Base64;
 
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -23,6 +30,7 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.KeyStroke;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -39,10 +47,12 @@ public class Main {
 		acceptableHeight = (int) (screenSize.getWidth() / 2);
 	}
 	public static final String DIR_TITLE = "Choose a directory";
-	public static final String IMAGE_TITLE = "Choose an image or directory";
+	public static final String SELECT_IMAGE_TITLE = "Choose an image or directory to open";
+	public static final String ENCODE_IMAGE_TITLE = "Choose an image or directory to encode";
 	private static File directory;
 	private static JFileChooser fc = new JFileChooser();
 	private static int imageCount = 0;
+	private static Dimension mainDim = new Dimension(300,150);
 	private static final WindowListener windowListener = new WindowListener() {
 		@Override
 		public void windowClosed(WindowEvent e) {
@@ -81,21 +91,69 @@ public class Main {
 		}
 	};
 	public static void main(String[] args) {
-		chooseDirectory();
-		fc.setCurrentDirectory(directory);
-		fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-		fc.setMultiSelectionEnabled(true);
-		fc.setDialogTitle(IMAGE_TITLE);
-		fc.setFileFilter(new FileNameExtensionFilter("Images", "png", "jpeg", "jpg"));
+		JFrame frame = new JFrame(TITLE);
+		JPanel fullPanel = new JPanel();
+		fullPanel.setLayout(new GridLayout(1,2));
+		JPanel buttonPanel = new JPanel();
+		buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.PAGE_AXIS));
+		JButton viewButton = new JButton("View");
+		viewButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+		JButton encodeButton = new JButton("Encode");
+		encodeButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+		viewButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				frame.dispose();
+				chooseDirectory();
+				fc.setCurrentDirectory(directory);
+				fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+				fc.setMultiSelectionEnabled(true);
+				fc.setDialogTitle(SELECT_IMAGE_TITLE);
+				fc.setFileFilter(new FileNameExtensionFilter("Images", "png", "jpeg", "jpg"));
+				openImages();
+			}
+		});
+		encodeButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				frame.dispose();
+				chooseDirectory();
+				fc.setCurrentDirectory(directory);
+				fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+				fc.setMultiSelectionEnabled(true);
+				fc.setDialogTitle(SELECT_IMAGE_TITLE);
+				fc.setFileFilter(new FileNameExtensionFilter("Images", "png", "jpeg", "jpg"));
+				encodeImages();
+			}
+		});
 		try {
-			EventQueue.invokeAndWait(new Runnable() {
-				public void run() {
-					openImages();
-				}
-			});
-		} catch (InvocationTargetException | InterruptedException e) {
-			e.printStackTrace();
+			InputStream is = Main.class.getClassLoader().getResourceAsStream("icon.png");
+			if (is == null) {
+				System.err.println("No image");
+				System.exit(-1);
+			}
+			fullPanel.add(new JLabel(new ImageIcon(is.readAllBytes())));
+		} catch (IOException e1) {
+			e1.printStackTrace();
 		}
+		fullPanel.add(buttonPanel);
+		
+		
+		JLabel titleLabel = new JLabel(TITLE);
+		titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		
+		buttonPanel.add(Box.createVerticalGlue());
+		buttonPanel.add(titleLabel);
+		buttonPanel.add(viewButton);
+		buttonPanel.add(encodeButton);
+		buttonPanel.add(Box.createVerticalGlue());
+		
+		frame.getContentPane().add(fullPanel, BorderLayout.CENTER);
+		
+		frame.setPreferredSize(mainDim);
+		frame.setSize(mainDim);
+		frame.setLocationRelativeTo(null);
+		frame.setVisible(true);
 	}
 	public static void chooseDirectory() {
 		fc.setCurrentDirectory(null);
@@ -109,7 +167,47 @@ public class Main {
 			chooseDirectory();
 		}
 	}
+	public static void encodeImages() {
+		
+		fc.setDialogTitle(ENCODE_IMAGE_TITLE);
+		ArrayList<File> images = new ArrayList<File>();
+		while (true) {
+			if (fc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+				File[] files = fc.getSelectedFiles();
+				images.clear();
+				for (File file : files) {
+					if (file.isFile()) images.add(file);
+					if (file.isDirectory()) {
+						images.addAll(getFiles(file));
+					}
+				}
+			} else {
+				images.clear();
+				break;
+			}
+			for (File file : images) {
+				if (file.getName().startsWith(".")) continue;
+				try {
+					FileInputStream fis = new FileInputStream(file);
+					byte[] img = Base64.getEncoder().encode(fis.readAllBytes());
+					fis.close();
+					FileOutputStream fos = new FileOutputStream(file);
+					fos.write(img);
+					fos.flush();
+					fos.close();
+				} catch (IllegalArgumentException | MalformedInputException e) {
+					JOptionPane.showMessageDialog(null, "Unable to encode " + file.getName(), "Error", JOptionPane.ERROR_MESSAGE);
+					continue;
+				} catch (IOException e) {
+					e.printStackTrace();
+					continue;
+				}
+			}
+			images.clear();
+		}
+	}
 	public static void openImages() {
+		fc.setDialogTitle(SELECT_IMAGE_TITLE);
 		ArrayList<File> images = new ArrayList<File>();
 		while (true) {
 			if (fc.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
@@ -140,9 +238,12 @@ public class Main {
 				if (img == null) continue;
 				JFrame frame = new JFrame(file.getName());
 				ImageIcon icon = new ImageIcon(img);
-				frame.setSize(icon.getIconWidth() > acceptableWidth ? acceptableWidth : icon.getIconWidth(), icon.getIconHeight() > acceptableHeight ? acceptableHeight : icon.getIconHeight());
+				JScrollPane scrollPane = new JScrollPane(new JLabel(icon));
+				int scrollBarWidth = scrollPane.getVerticalScrollBar().getMaximumSize().width * 2;
+				int scrollBarHeight = scrollPane.getHorizontalScrollBar().getMaximumSize().height * 2;
+				frame.setSize((icon.getIconWidth() > acceptableWidth ? acceptableWidth : icon.getIconWidth()) + scrollBarWidth, (icon.getIconHeight() > acceptableHeight ? acceptableHeight : icon.getIconHeight()) + scrollBarHeight);
 				frame.setLocationByPlatform(true);
-				frame.add(new JScrollPane(new JLabel(icon)));
+				frame.add(scrollPane);
 				imageCount++;
 				frame.addWindowListener(windowListener);
 				
