@@ -1,2 +1,2 @@
 # UFBR
-Java utility to open images encoded in Base64
+Java utility to view and encode images in Base64
